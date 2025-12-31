@@ -12,6 +12,7 @@ export interface UserProfile {
   defaultPaymentTerms?: string;
   defaultClientAddress?: string;
   currency: string;
+  invoiceNumberFormat?: string;
 }
 
 export interface Client {
@@ -21,6 +22,15 @@ export interface Client {
   address: string;
   phone?: string;
   notes?: string;
+}
+
+export interface Template {
+  id: string;
+  name: string;
+  description?: string;
+  content: string;
+  layoutId: LayoutType;
+  createdAt: number;
 }
 
 export interface InvoiceVersion {
@@ -35,6 +45,7 @@ export interface Invoice {
   id: string;
   invoiceNumber: string;
   createdAt: number;
+  dueDate?: number;
   clientName: string;
   summary: string; // Summary of the latest version
   markdownContent: string; // Content of the latest version
@@ -62,5 +73,6 @@ export const DEFAULT_PROFILE: UserProfile = {
   paymentDetails: "Bank: USBank\nAccount: 123456789\nRouting: 987654321",
   defaultPaymentTerms: "Net 30",
   defaultClientAddress: "",
-  currency: "USD"
+  currency: "USD",
+  invoiceNumberFormat: "INV-{SEQ}"
 };

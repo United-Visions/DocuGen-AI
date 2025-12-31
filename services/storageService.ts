@@ -1,10 +1,11 @@
-import { Invoice, UserProfile, DEFAULT_PROFILE, InvoiceVersion, Client } from '../types';
+import { Invoice, UserProfile, DEFAULT_PROFILE, InvoiceVersion, Client, Template } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 
 const KEYS = {
   PROFILE: 'docugen_profile',
   INVOICES: 'docugen_invoices',
   CLIENTS: 'docugen_clients',
+  TEMPLATES: 'docugen_templates',
   SEQUENCE: 'docugen_sequence',
   THEME: 'docugen_theme'
 };
@@ -93,22 +94,80 @@ export const StorageService = {
     localStorage.setItem(KEYS.CLIENTS, JSON.stringify(updated));
   },
 
+  // Template Management
+  getTemplates: (): Template[] => {
+    const stored = localStorage.getItem(KEYS.TEMPLATES);
+    return stored ? JSON.parse(stored) : [];
+  },
+
+  saveTemplate: (template: Template): void => {
+    const templates = StorageService.getTemplates();
+    const updated = [template, ...templates];
+    localStorage.setItem(KEYS.TEMPLATES, JSON.stringify(updated));
+  },
+
+  deleteTemplate: (id: string): void => {
+    const templates = StorageService.getTemplates();
+    const updated = templates.filter(t => t.id !== id);
+    localStorage.setItem(KEYS.TEMPLATES, JSON.stringify(updated));
+  },
+
   // Get context for AI (last 3 invoices)
   getContextInvoices: (): Invoice[] => {
     return StorageService.getInvoices().slice(0, 3);
   },
 
   // Invoice Sequence Management
-  getNextInvoiceNumber: (): string => {
+  getNextInvoiceNumber: (format: string = "INV-{SEQ}"): string => {
     const seq = localStorage.getItem(KEYS.SEQUENCE);
     const num = seq ? parseInt(seq, 10) : 1;
-    return `INV-${String(num).padStart(4, '0')}`;
+    const seqStr = String(num).padStart(4, '0');
+    
+    const date = new Date();
+    const year = date.getFullYear().toString();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    
+    // Replace placeholders
+    let result = format
+      .replace('{SEQ}', seqStr)
+      .replace('{YYYY}', year)
+      .replace('{MM}', month);
+
+    // Fallback if user cleared format accidentally
+    if (!result) result = `INV-${seqStr}`;
+
+    return result;
   },
 
   incrementSequence: (): void => {
     const seq = localStorage.getItem(KEYS.SEQUENCE);
     const num = seq ? parseInt(seq, 10) : 1;
     localStorage.setItem(KEYS.SEQUENCE, (num + 1).toString());
+  },
+
+  // Helper to calculate due date from terms
+  calculateDueDate: (terms: string = ""): number => {
+    const lowerTerms = terms.toLowerCase();
+    
+    // Immediate payment
+    if (lowerTerms.includes("receipt") || lowerTerms.includes("immediate") || lowerTerms.includes("upon invoice")) {
+        return Date.now();
+    }
+
+    // End of Month
+    if (lowerTerms.includes("end of month") || lowerTerms.includes("eom")) {
+        const date = new Date();
+        // Set to last day of current month
+        return new Date(date.getFullYear(), date.getMonth() + 1, 0).getTime();
+    }
+    
+    // Parse "Net X"
+    const match = lowerTerms.match(/net\s*(\d+)/) || lowerTerms.match(/(\d+)\s*days/);
+    const days = match ? parseInt(match[1], 10) : 30; // Default to 30 days if unclear
+    
+    const date = new Date();
+    date.setDate(date.getDate() + days);
+    return date.getTime();
   },
 
   // Theme Management

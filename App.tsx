@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Send, 
   Printer, 
@@ -7,7 +7,7 @@ import {
   FileText, 
   History, 
   LayoutTemplate,
-  ChevronLeft,
+  ChevronLeft, 
   Loader2,
   Calendar,
   Trash2,
@@ -18,14 +18,23 @@ import {
   X,
   GitBranch,
   Users,
-  ChevronDown
+  ChevronDown,
+  Copy,
+  RectangleVertical,
+  RectangleHorizontal,
+  File as FileIcon,
+  Share2,
+  Download,
+  Check,
+  MonitorDown
 } from 'lucide-react';
 import MarkdownPreview from './components/MarkdownPreview';
 import SettingsModal from './components/SettingsModal';
 import ClientManagerModal from './components/ClientManagerModal';
+import TemplateModal from './components/TemplateModal';
 import { GeminiService } from './services/geminiService';
 import { StorageService } from './services/storageService';
-import { Invoice, UserProfile, LayoutType, InvoiceVersion, Client } from './types';
+import { Invoice, UserProfile, LayoutType, InvoiceVersion, Client, Template } from './types';
 import { v4 as uuidv4 } from 'uuid';
 
 const App: React.FC = () => {
@@ -41,6 +50,10 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isClientManagerOpen, setIsClientManagerOpen] = useState(false);
   
+  // Template Modal State
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  const [templateModalMode, setTemplateModalMode] = useState<'select' | 'save'>('select');
+  
   const [currentLayout, setCurrentLayout] = useState<LayoutType>('modern');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [theme, setTheme] = useState<'light' | 'dark'>(StorageService.getTheme());
@@ -48,6 +61,18 @@ const App: React.FC = () => {
   // Editing State
   const [isEditing, setIsEditing] = useState(false);
   const [editedMarkdown, setEditedMarkdown] = useState('');
+
+  // PDF Export State
+  const [paperSize, setPaperSize] = useState<'a4' | 'letter'>('a4');
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
+
+  // Share Menu State
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const shareMenuRef = useRef<HTMLDivElement>(null);
+  const [copyFeedback, setCopyFeedback] = useState(false);
+
+  // PWA Install State
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
 
   // Load Initial Data
   useEffect(() => {
@@ -59,6 +84,50 @@ const App: React.FC = () => {
       document.documentElement.classList.remove('dark');
     }
   }, [theme]);
+
+  // Handle PWA Install Prompt
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      // Prevent the mini-infobar from appearing on mobile
+      e.preventDefault();
+      // Stash the event so it can be triggered later.
+      setInstallPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallClick = () => {
+    if (!installPrompt) return;
+    
+    // Show the install prompt
+    installPrompt.prompt();
+    
+    // Wait for the user to respond to the prompt
+    installPrompt.userChoice.then((choiceResult: { outcome: string }) => {
+      if (choiceResult.outcome === 'accepted') {
+        console.log('User accepted the install prompt');
+      } else {
+        console.log('User dismissed the install prompt');
+      }
+      setInstallPrompt(null);
+    });
+  };
+
+  // Click outside listener for Share Menu
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (shareMenuRef.current && !shareMenuRef.current.contains(event.target as Node)) {
+        setIsShareOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Refresh Clients when modal updates
   const handleClientUpdate = () => {
@@ -81,17 +150,22 @@ const App: React.FC = () => {
       const history = StorageService.getContextInvoices();
       const selectedClient = clients.find(c => c.id === selectedClientId) || null;
       
+      // Calculate Due Date based on terms
+      const dueDateTimestamp = StorageService.calculateDueDate(profile.defaultPaymentTerms);
+      const formattedDueDate = new Date(dueDateTimestamp).toLocaleDateString('en-US', {
+         year: 'numeric', month: 'long', day: 'numeric'
+      });
+
       if (currentInvoice) {
         // --- UPDATE EXISTING INVOICE (New Version) ---
-        // Contextually, we don't change the client if updating unless explicitly asked, 
-        // but for now, we keep the original generate signature mostly same.
         const result = await GeminiService.generateInvoice(
           prompt, 
           profile, 
           history, 
           currentInvoice.invoiceNumber,
           currentInvoice.markdownContent,
-          null // Don't override client on updates usually, unless we want to allow re-targeting
+          null,
+          formattedDueDate
         );
 
         const newVersion: InvoiceVersion = {
@@ -117,14 +191,16 @@ const App: React.FC = () => {
 
       } else {
         // --- CREATE NEW INVOICE ---
-        const nextInvNum = StorageService.getNextInvoiceNumber();
+        const nextInvNum = StorageService.getNextInvoiceNumber(profile.invoiceNumberFormat);
+        
         const result = await GeminiService.generateInvoice(
             prompt, 
             profile, 
             history, 
             nextInvNum, 
             undefined, 
-            selectedClient
+            selectedClient,
+            formattedDueDate
         );
         StorageService.incrementSequence();
 
@@ -140,6 +216,7 @@ const App: React.FC = () => {
           id: uuidv4(),
           invoiceNumber: nextInvNum,
           createdAt: Date.now(),
+          dueDate: dueDateTimestamp,
           markdownContent: result.markdown,
           clientName: result.clientName,
           summary: result.summary,
@@ -176,6 +253,74 @@ const App: React.FC = () => {
   // Handle Print
   const handlePrint = () => {
     window.print();
+    setIsShareOpen(false);
+  };
+
+  // Handle Download Markdown
+  const handleDownloadMarkdown = () => {
+    if (!currentInvoice) return;
+    const blob = new Blob([currentInvoice.markdownContent], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Invoice-${currentInvoice.invoiceNumber}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setIsShareOpen(false);
+  };
+
+  // Handle Native Share
+  const handleNativeShare = async () => {
+    if (!currentInvoice) return;
+    
+    try {
+      // First try to share as a file (preferred for Drive/saving)
+      const file = new File([currentInvoice.markdownContent], `Invoice-${currentInvoice.invoiceNumber}.md`, { type: 'text/markdown' });
+      
+      const shareData = {
+        files: [file],
+        title: `Invoice ${currentInvoice.invoiceNumber}`,
+        text: `Invoice for ${currentInvoice.clientName}`
+      };
+
+      if (navigator.canShare && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+      } else {
+        throw new Error("File sharing not supported or permission denied");
+      }
+    } catch (err) {
+      console.warn("File sharing failed, falling back to text sharing:", err);
+      
+      // Fallback: Share just the text content
+      try {
+        if (navigator.share) {
+            await navigator.share({
+                title: `Invoice ${currentInvoice.invoiceNumber}`,
+                text: currentInvoice.markdownContent
+            });
+        } else {
+            alert("Sharing is not supported on this device/browser.");
+        }
+      } catch (textErr) {
+          console.error("Text sharing failed:", textErr);
+      }
+    }
+    
+    setIsShareOpen(false);
+  };
+
+  // Handle Copy
+  const handleCopyText = async () => {
+     if (!currentInvoice) return;
+     try {
+         await navigator.clipboard.writeText(currentInvoice.markdownContent);
+         setCopyFeedback(true);
+         setTimeout(() => setCopyFeedback(false), 2000);
+     } catch (err) {
+         console.error("Failed to copy", err);
+     }
   };
 
   // New Invoice Reset
@@ -242,6 +387,57 @@ const App: React.FC = () => {
     setCurrentLayout(layout);
   };
 
+  // Template Handlers
+  const openSaveTemplateModal = () => {
+    setTemplateModalMode('save');
+    setIsTemplateModalOpen(true);
+  };
+
+  const openSelectTemplateModal = () => {
+    setTemplateModalMode('select');
+    setIsTemplateModalOpen(true);
+  };
+
+  const handleSelectTemplate = (template: Template) => {
+    // Instantiate new invoice from template
+    const nextInvNum = StorageService.getNextInvoiceNumber(profile.invoiceNumberFormat);
+    StorageService.incrementSequence();
+    
+    // Calculate due date
+    const dueDateTimestamp = StorageService.calculateDueDate(profile.defaultPaymentTerms);
+
+    const initialVersion: InvoiceVersion = {
+      id: uuidv4(),
+      createdAt: Date.now(),
+      markdownContent: template.content,
+      layoutId: template.layoutId,
+      summary: "Created from Template: " + template.name
+    };
+
+    const newInvoice: Invoice = {
+      id: uuidv4(),
+      invoiceNumber: nextInvNum,
+      createdAt: Date.now(),
+      dueDate: dueDateTimestamp,
+      markdownContent: template.content,
+      clientName: "New Client", // Placeholder until edited
+      summary: "Draft from " + template.name,
+      layoutId: template.layoutId,
+      versions: [initialVersion]
+    };
+
+    StorageService.saveInvoice(newInvoice);
+    setInvoices(StorageService.getInvoices());
+    setCurrentInvoice(newInvoice);
+    setCurrentLayout(template.layoutId);
+    
+    // Automatically enter edit mode so user can customize
+    setIsEditing(true);
+    setEditedMarkdown(template.content);
+    
+    setIsTemplateModalOpen(false);
+  };
+
   return (
     <div className="flex h-screen bg-gray-100 dark:bg-gray-950 overflow-hidden transition-colors">
       {/* Sidebar */}
@@ -269,13 +465,23 @@ const App: React.FC = () => {
             </div>
           </div>
 
-          <div className="p-4">
+          <div className="p-4 space-y-2">
             <button 
               onClick={handleNew}
               className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center gap-2 transition-colors shadow-sm font-medium"
             >
               <Plus size={18} /> New Document
             </button>
+            
+            {/* INSTALL APP BUTTON (Only visible if prompt available) */}
+            {installPrompt && (
+              <button 
+                onClick={handleInstallClick}
+                className="w-full py-2 px-4 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm font-medium animate-pulse"
+              >
+                <MonitorDown size={16} /> Install App
+              </button>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto px-4 pb-4 custom-scrollbar">
@@ -358,6 +564,7 @@ const App: React.FC = () => {
         {currentInvoice && (
           <div className="h-16 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-6 pl-16 no-print z-10 shrink-0 transition-colors">
              <div className="flex items-center gap-4">
+               {/* Layout */}
                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
                   <LayoutTemplate size={16} className="ml-2" />
                   <select 
@@ -370,6 +577,33 @@ const App: React.FC = () => {
                     <option value="bold" className="dark:bg-gray-800">Bold & Dark</option>
                     <option value="clean" className="dark:bg-gray-800">Clean Mono</option>
                   </select>
+               </div>
+
+               {/* Paper Settings */}
+               <div className="hidden lg:flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg border-l border-gray-200 dark:border-gray-700 ml-2">
+                   <div className="flex items-center gap-1 pl-2">
+                     <FileIcon size={14} className="text-gray-500" />
+                     <select 
+                        value={paperSize}
+                        onChange={(e) => setPaperSize(e.target.value as any)}
+                        className="bg-transparent border-none focus:ring-0 text-sm py-1 pr-4 pl-1 cursor-pointer text-gray-700 dark:text-gray-200"
+                     >
+                         <option value="a4" className="dark:bg-gray-800">A4</option>
+                         <option value="letter" className="dark:bg-gray-800">Letter</option>
+                     </select>
+                   </div>
+                   <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1"></div>
+                   <div className="flex items-center gap-1">
+                     {orientation === 'portrait' ? <RectangleVertical size={14} className="text-gray-500" /> : <RectangleHorizontal size={14} className="text-gray-500" />}
+                     <select 
+                        value={orientation}
+                        onChange={(e) => setOrientation(e.target.value as any)}
+                        className="bg-transparent border-none focus:ring-0 text-sm py-1 pr-4 pl-1 cursor-pointer text-gray-700 dark:text-gray-200"
+                     >
+                         <option value="portrait" className="dark:bg-gray-800">Portrait</option>
+                         <option value="landscape" className="dark:bg-gray-800">Landscape</option>
+                     </select>
+                   </div>
                </div>
                
                <div className="hidden md:flex text-sm text-gray-400 items-center gap-2 border-l border-gray-200 dark:border-gray-700 pl-4 ml-2">
@@ -387,15 +621,73 @@ const App: React.FC = () => {
                    >
                      <Edit size={16} /> Edit
                    </button>
-                   <button 
-                     onClick={handlePrint}
-                     className="flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-800 dark:hover:bg-gray-600 transition-colors shadow-sm active:scale-95 text-sm"
-                   >
-                     <Printer size={16} /> Export PDF
-                   </button>
+                   
+                   {/* SHARE / EXPORT DROPDOWN */}
+                   <div className="relative" ref={shareMenuRef}>
+                     <button 
+                       onClick={() => setIsShareOpen(!isShareOpen)}
+                       className="flex items-center gap-2 px-4 py-2 bg-gray-900 dark:bg-gray-700 text-white rounded-lg hover:bg-gray-800 dark:hover:bg-gray-600 transition-colors shadow-sm active:scale-95 text-sm"
+                     >
+                       <Share2 size={16} /> Share / Export
+                       <ChevronDown size={14} className={`transition-transform duration-200 ${isShareOpen ? 'rotate-180' : ''}`} />
+                     </button>
+                     
+                     {isShareOpen && (
+                       <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-100 dark:border-gray-700 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                          <div className="p-1">
+                             <button 
+                                onClick={handlePrint}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-left"
+                             >
+                                <Printer size={16} className="text-gray-500 dark:text-gray-400" />
+                                <div>
+                                   <span className="block font-medium">Print / Save PDF</span>
+                                   <span className="text-[10px] text-gray-400">Use system dialog</span>
+                                </div>
+                             </button>
+
+                             <button 
+                                onClick={handleNativeShare}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-left"
+                             >
+                                <Share2 size={16} className="text-blue-500" />
+                                <div>
+                                   <span className="block font-medium">Native Share</span>
+                                   <span className="text-[10px] text-gray-400">Drive, Email, Airdrop</span>
+                                </div>
+                             </button>
+
+                             <div className="h-px bg-gray-100 dark:bg-gray-700 my-1"></div>
+
+                             <button 
+                                onClick={handleDownloadMarkdown}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-left"
+                             >
+                                <Download size={16} className="text-gray-500 dark:text-gray-400" />
+                                <span>Download Markdown</span>
+                             </button>
+
+                             <button 
+                                onClick={handleCopyText}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors text-left"
+                             >
+                                {copyFeedback ? <Check size={16} className="text-green-500" /> : <Copy size={16} className="text-gray-500 dark:text-gray-400" />}
+                                <span>{copyFeedback ? 'Copied!' : 'Copy to Clipboard'}</span>
+                             </button>
+                          </div>
+                       </div>
+                     )}
+                   </div>
                  </>
                ) : (
                  <>
+                   <button 
+                     onClick={openSaveTemplateModal}
+                     className="flex items-center gap-2 px-3 py-2 text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 rounded-lg transition-colors text-sm font-medium"
+                     title="Save current structure as a reusable template"
+                   >
+                     <Copy size={16} /> Save as Template
+                   </button>
                    <button 
                      onClick={handleCancelEdit}
                      className="flex items-center gap-2 px-3 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors text-sm font-medium"
@@ -447,12 +739,20 @@ const App: React.FC = () => {
                      </div>
                   </div>
                 )}
+                
+                {/* Template Button */}
+                <button 
+                    onClick={openSelectTemplateModal}
+                    className="absolute top-4 left-4 z-10 px-3 py-1.5 text-xs font-medium rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 border border-transparent hover:border-gray-300 dark:hover:border-gray-600 flex items-center gap-1 transition-colors"
+                >
+                    <LayoutTemplate size={12} /> Browse Templates
+                </button>
 
                 <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   placeholder="e.g., Invoice to TechStart Inc for UI Design, 20 hours at $100/hr. Include a discount of $200."
-                  className="w-full p-6 pr-16 h-40 resize-none outline-none text-gray-800 dark:text-gray-100 text-lg placeholder:text-gray-300 dark:placeholder:text-gray-600 bg-white dark:bg-gray-800 transition-colors"
+                  className="w-full p-6 pt-14 pr-16 h-48 resize-none outline-none text-gray-800 dark:text-gray-100 text-lg placeholder:text-gray-300 dark:placeholder:text-gray-600 bg-white dark:bg-gray-800 transition-colors"
                 />
                 <button
                   onClick={handleGenerate}
@@ -481,6 +781,10 @@ const App: React.FC = () => {
                     layout={currentLayout}
                     profile={profile}
                     invoiceNumber={currentInvoice.invoiceNumber}
+                    createdAt={currentInvoice.createdAt}
+                    dueDate={currentInvoice.dueDate}
+                    paperSize={paperSize}
+                    orientation={orientation}
                   />
                </div>
                
@@ -521,6 +825,15 @@ const App: React.FC = () => {
         isOpen={isClientManagerOpen}
         onClose={() => setIsClientManagerOpen(false)}
         onUpdate={handleClientUpdate}
+      />
+      
+      <TemplateModal
+        isOpen={isTemplateModalOpen}
+        onClose={() => setIsTemplateModalOpen(false)}
+        mode={templateModalMode}
+        currentContent={isEditing ? editedMarkdown : (currentInvoice?.markdownContent)}
+        currentLayout={currentLayout}
+        onSelect={handleSelectTemplate}
       />
     </div>
   );

@@ -18,7 +18,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onUpdate
     }
   }, [isOpen]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
@@ -210,12 +210,46 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onUpdate
              <div>
                 <label className={labelClass}>Default Payment Terms</label>
                 <input 
+                  list="payment-terms-options"
                   name="defaultPaymentTerms" 
                   value={formData.defaultPaymentTerms || ''} 
                   onChange={handleChange}
-                  placeholder="e.g. Net 30, Due on Receipt"
+                  placeholder="Select or type..."
                   className={inputClass}
                 />
+                <datalist id="payment-terms-options">
+                  <option value="Due on Receipt" />
+                  <option value="Upon Invoice" />
+                  <option value="Net 7" />
+                  <option value="Net 10" />
+                  <option value="Net 15" />
+                  <option value="Net 30" />
+                  <option value="Net 45" />
+                  <option value="Net 60" />
+                  <option value="Net 90" />
+                  <option value="End of Month" />
+                </datalist>
+             </div>
+             <div>
+                <label className={labelClass}>Invoice Number Format</label>
+                <input 
+                  list="invoice-format-options"
+                  name="invoiceNumberFormat" 
+                  value={formData.invoiceNumberFormat || 'INV-{SEQ}'} 
+                  onChange={handleChange}
+                  placeholder="Select or type format..."
+                  className={inputClass}
+                />
+                <datalist id="invoice-format-options">
+                  <option value="INV-{SEQ}">Standard (INV-0001)</option>
+                  <option value="INV-{YYYY}-{SEQ}">Year Prefix (INV-2024-0001)</option>
+                  <option value="INV-{YYYY}{MM}-{SEQ}">Year/Month (INV-202403-0001)</option>
+                  <option value="{YYYY}-{SEQ}">Simple (2024-0001)</option>
+                  <option value="{SEQ}">Sequence Only (0001)</option>
+                </datalist>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
+                   Available: <code>{'{SEQ}'}</code> (0001), <code>{'{YYYY}'}</code>, <code>{'{MM}'}</code>
+                </p>
              </div>
           </div>
 

@@ -11,7 +11,8 @@ export const GeminiService = {
     previousInvoices: Invoice[],
     invoiceNumber: string,
     currentContent?: string,
-    selectedClient?: Client | null
+    selectedClient?: Client | null,
+    formattedDueDate?: string
   ): Promise<{ markdown: string; summary: string; clientName: string }> => {
     
     const currentDate = new Date().toLocaleDateString('en-US', { 
@@ -40,6 +41,7 @@ export const GeminiService = {
     // Construct Context
     const profileContext = `
       CURRENT DATE: ${currentDate}
+      DUE DATE: ${formattedDueDate || "Upon Receipt"}
       ASSIGNED INVOICE NUMBER: ${invoiceNumber}
       
       CURRENT USER PROFILE (The Sender):
@@ -79,11 +81,12 @@ export const GeminiService = {
       4. Use H2 (##) for major sections like "Bill To", "Details", "Terms".
       5. INCLUDE the "CURRENT USER PROFILE" details as the "From" section automatically.
       6. USE the "ASSIGNED INVOICE NUMBER" (${invoiceNumber}) and "CURRENT DATE" (${currentDate}) explicitly in the document header.
-      7. INCLUDE the Default Terms (${profile.defaultPaymentTerms}) unless the user specifies otherwise.
-      8. Infer the Client details from the prompt. If a "SELECTED CLIENT" is provided in context, USE THAT.
-      9. Calculate totals if individual items are listed.
-      10. Do NOT wrap the output in \`\`\`markdown code blocks. Return raw markdown text.
-      11. At the very end of the response, add a hidden metadata section strictly in this format:
+      7. INCLUDE the "DUE DATE" (${formattedDueDate || 'N/A'}) in the header or terms section.
+      8. INCLUDE the Default Terms (${profile.defaultPaymentTerms}) unless the user specifies otherwise.
+      9. Infer the Client details from the prompt. If a "SELECTED CLIENT" is provided in context, USE THAT.
+      10. Calculate totals if individual items are listed.
+      11. Do NOT wrap the output in \`\`\`markdown code blocks. Return raw markdown text.
+      12. At the very end of the response, add a hidden metadata section strictly in this format:
           <!-- METADATA
           CLIENT: [Extracted Client Name]
           SUMMARY: [Short summary of invoice, e.g. "Web Dev Services - Oct"]
@@ -123,14 +126,10 @@ export const GeminiService = {
       const match = text.match(metadataRegex);
 
       if (match) {
-        // Only overwrite client name from metadata if we didn't explicitly select one, 
-        // OR if the AI extracted a more specific name from the prompt despite the selected client context.
-        // However, usually we trust the selected client. Let's keep the metadata extraction for summary.
         if (!selectedClient) {
             clientName = match[1];
         }
         summary = match[2];
-        // Remove metadata from display markdown
         markdown = text.replace(metadataRegex, '').trim();
       }
 
