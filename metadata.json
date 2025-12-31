@@ -1,0 +1,5 @@
+{
+  "name": "DocuGen AI Agent",
+  "description": "An intelligent agent that generates Markdown-based documents (starting with Invoices), learns from your history, and exports to beautifully styled PDFs.",
+  "requestFramePermissions": []
+}
