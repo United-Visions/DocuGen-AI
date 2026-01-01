@@ -45,7 +45,6 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
     const printStyles = "print:shadow-none print:m-0 print:p-8 print:w-full print:max-w-full print:min-h-0 print:h-auto print:overflow-visible";
     
     // Scale for print to ensure "Fit to page" feel
-    // zoom property is effective for print scaling in Chrome/Edge/Safari
     const printScale = "[&_div]:print:text-[95%] print:leading-tight";
 
     const common = `${dims} mx-auto shadow-lg ${printStyles} ${printScale}`;
@@ -133,7 +132,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                     }
                     /* Force scale content if needed */
                     #printable-content {
-                        zoom: 0.95; 
+                        zoom: 0.90; 
                     }
                 }
             `}

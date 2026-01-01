@@ -42,51 +42,45 @@
           size: auto;
         }
         
-        body, html, #root {
-          height: 100% !important;
+        /* 1. Global Reset */
+        body, html {
+          height: auto !important;
           width: 100% !important;
           margin: 0 !important;
           padding: 0 !important;
-          overflow: visible !important;
           background: white !important;
+          overflow: visible !important;
         }
 
-        /* Hide everything by default */
-        body > * {
-          display: none !important;
+        /* 2. Utility Overrides (Crucial for un-clipping content) */
+        /* Override Tailwind classes that constrain height/overflow */
+        .h-screen, .h-full {
+          height: auto !important;
+          min-height: 0 !important;
         }
-
-        /* Re-display root but treat it transparently */
-        body > #root {
-          display: block !important;
-          position: static !important;
-        }
-
-        /* Hide all children of root */
-        #root > * {
-          display: none !important;
-        }
-
-        /* Target the layout containers to navigate to printable-area */
-        /* Since we don't know the exact DOM depth, using a visibility approach for the inner content is safer 
-           BUT position:absolute causes the clipping. 
-           
-           Strategy: Make #printable-area fixed at 0,0 relative to viewport for print? 
-           No, Fixed prints only one page.
-           
-           Strategy: Use display:none on everything, then display:block on #printable-area.
-           But #printable-area is deep in the tree.
-        */
         
-        /* New Strategy: Visibility Hidden + Absolute Positioning reset */
+        .overflow-hidden, .overflow-y-auto, .overflow-x-hidden {
+          overflow: visible !important;
+        }
+
+        /* 3. Hide non-print elements */
+        .no-print {
+          display: none !important;
+        }
+
+        /* 4. Visibility Strategy */
+        /* Hide everything visually by default */
         body * {
           visibility: hidden;
         }
 
+        /* Reveal the printable area and all its children */
         #printable-area, #printable-area * {
           visibility: visible;
         }
 
+        /* 5. Positioning */
+        /* Take the printable area out of normal flow to place it at top-left */
         #printable-area {
           position: absolute;
           left: 0;
@@ -94,22 +88,20 @@
           width: 100% !important;
           margin: 0 !important;
           padding: 0 !important;
-          /* Important: Reset height to auto to allow multi-page */
-          height: auto !important; 
-          min-height: 100vh;
-          overflow: visible !important;
+          
+          /* Ensure text is black and background is white */
+          color: black !important;
+          background: white !important;
+          
+          /* Ensure block display to allow pagination */
           display: block !important;
-          background: white;
-          z-index: 9999;
         }
-        
-        /* Remove preview constraints during print */
+
+        /* Fix specific preview container overrides */
         #printable-content {
-          box-shadow: none !important;
           margin: 0 !important;
+          box-shadow: none !important;
           border: none !important;
-          width: 100% !important;
-          max-width: 100% !important;
         }
       }
       
