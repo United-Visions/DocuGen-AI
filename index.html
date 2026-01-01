@@ -37,36 +37,79 @@
     <style>
       /* Print styles */
       @media print {
-        body, html {
-          height: auto !important;
-          overflow: visible !important;
+        @page {
+          margin: 0;
+          size: auto;
         }
+        
+        body, html, #root {
+          height: 100% !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: visible !important;
+          background: white !important;
+        }
+
+        /* Hide everything by default */
+        body > * {
+          display: none !important;
+        }
+
+        /* Re-display root but treat it transparently */
+        body > #root {
+          display: block !important;
+          position: static !important;
+        }
+
+        /* Hide all children of root */
+        #root > * {
+          display: none !important;
+        }
+
+        /* Target the layout containers to navigate to printable-area */
+        /* Since we don't know the exact DOM depth, using a visibility approach for the inner content is safer 
+           BUT position:absolute causes the clipping. 
+           
+           Strategy: Make #printable-area fixed at 0,0 relative to viewport for print? 
+           No, Fixed prints only one page.
+           
+           Strategy: Use display:none on everything, then display:block on #printable-area.
+           But #printable-area is deep in the tree.
+        */
+        
+        /* New Strategy: Visibility Hidden + Absolute Positioning reset */
         body * {
           visibility: hidden;
         }
+
         #printable-area, #printable-area * {
           visibility: visible;
         }
+
         #printable-area {
           position: absolute;
           left: 0;
           top: 0;
-          width: 100%;
-          margin: 0;
-          padding: 0;
-          background: white;
-          color: black;
-          height: auto !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          /* Important: Reset height to auto to allow multi-page */
+          height: auto !important; 
+          min-height: 100vh;
           overflow: visible !important;
           display: block !important;
+          background: white;
+          z-index: 9999;
         }
-        .no-print {
-          display: none !important;
-        }
-        /* Ensure preview container removes its own constraints */
-        #printable-area > div {
-           height: auto !important;
-           padding-bottom: 0 !important;
+        
+        /* Remove preview constraints during print */
+        #printable-content {
+          box-shadow: none !important;
+          margin: 0 !important;
+          border: none !important;
+          width: 100% !important;
+          max-width: 100% !important;
         }
       }
       

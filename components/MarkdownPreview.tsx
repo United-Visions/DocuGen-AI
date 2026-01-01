@@ -41,7 +41,14 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   // Layout specific wrapper classes
   const getLayoutClasses = () => {
     const dims = getDimensions();
-    const common = `${dims} mx-auto shadow-lg print:shadow-none print:m-0 print:p-8 print:w-full print:max-w-none print:min-h-0`;
+    // In print: remove fixed dimensions constraints that might clip, enable standard flow
+    const printStyles = "print:shadow-none print:m-0 print:p-8 print:w-full print:max-w-full print:min-h-0 print:h-auto print:overflow-visible";
+    
+    // Scale for print to ensure "Fit to page" feel
+    // zoom property is effective for print scaling in Chrome/Edge/Safari
+    const printScale = "[&_div]:print:text-[95%] print:leading-tight";
+
+    const common = `${dims} mx-auto shadow-lg ${printStyles} ${printScale}`;
     
     switch (layout) {
       case 'modern':
@@ -73,40 +80,40 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
   // Custom components for ReactMarkdown to inject styles based on layout
   const components = {
     h1: ({node, ...props}: any) => {
-      const base = "text-4xl font-bold mb-6 pb-2 border-b";
+      const base = "text-4xl font-bold mb-6 pb-2 border-b print:text-3xl print:mb-4";
       if (layout === 'modern') return <h1 className={`${base} text-blue-600 border-blue-100`} {...props} />;
-      if (layout === 'bold') return <h1 className={`${base} text-5xl uppercase tracking-tighter border-black`} {...props} />;
+      if (layout === 'bold') return <h1 className={`${base} text-5xl uppercase tracking-tighter border-black print:text-4xl`} {...props} />;
       return <h1 className={`${base} border-gray-200`} {...props} />;
     },
     h2: ({node, ...props}: any) => {
-      const base = "text-xl font-semibold mt-8 mb-4";
+      const base = "text-xl font-semibold mt-8 mb-4 print:mt-6 print:mb-2 print:text-lg";
       if (layout === 'modern') return <h2 className={`${base} text-blue-500 uppercase tracking-wide text-sm`} {...props} />;
       if (layout === 'bold') return <h2 className={`${base} bg-black text-white px-2 py-1 inline-block`} {...props} />;
       return <h2 className={`${base} text-gray-800`} {...props} />;
     },
     table: ({node, ...props}: any) => (
-      <div className="overflow-hidden my-8 rounded-lg border border-gray-200 print:border-gray-300">
+      <div className="overflow-hidden my-8 rounded-lg border border-gray-200 print:border-gray-300 print:my-4">
         <table className="min-w-full divide-y divide-gray-200" {...props} />
       </div>
     ),
     th: ({node, ...props}: any) => {
-      const base = "px-6 py-3 text-left text-xs font-medium uppercase tracking-wider";
+      const base = "px-6 py-3 text-left text-xs font-medium uppercase tracking-wider print:px-3 print:py-2";
       if (layout === 'modern') return <th className={`${base} bg-blue-50 text-blue-700`} {...props} />;
       if (layout === 'bold') return <th className={`${base} bg-gray-900 text-white`} {...props} />;
       return <th className={`${base} bg-gray-50 text-gray-500`} {...props} />;
     },
     td: ({node, ...props}: any) => (
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 border-t border-gray-100" {...props} />
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 border-t border-gray-100 print:px-3 print:py-2" {...props} />
     ),
-    p: ({node, ...props}: any) => <p className="mb-4 leading-relaxed" {...props} />,
+    p: ({node, ...props}: any) => <p className="mb-4 leading-relaxed print:mb-2" {...props} />,
     strong: ({node, ...props}: any) => <strong className="font-bold text-gray-900" {...props} />,
     ul: ({node, ...props}: any) => {
         const style = layout === 'modern' ? 'marker:text-blue-500' : 'marker:text-gray-400';
-        return <ul className={`list-disc pl-5 mb-4 space-y-1 ${style}`} {...props} />;
+        return <ul className={`list-disc pl-5 mb-4 space-y-1 ${style} print:mb-2`} {...props} />;
     },
     ol: ({node, ...props}: any) => {
         const style = layout === 'modern' ? 'marker:text-blue-500 font-medium' : 'marker:text-gray-500';
-        return <ol className={`list-decimal pl-5 mb-4 space-y-1 ${style}`} {...props} />;
+        return <ol className={`list-decimal pl-5 mb-4 space-y-1 ${style} print:mb-2`} {...props} />;
     },
     li: ({node, ...props}: any) => <li className="pl-1" {...props} />,
   };
@@ -118,29 +125,34 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
                 @media print {
                     @page {
                         size: ${paperSize} ${orientation};
-                        margin: 0;
+                        margin: 10mm; /* Add small hardware margin */
                     }
                     body {
                         -webkit-print-color-adjust: exact;
+                        font-size: 12px; /* Base font reduction for print */
+                    }
+                    /* Force scale content if needed */
+                    #printable-content {
+                        zoom: 0.95; 
                     }
                 }
             `}
       </style>
       <div className={getLayoutClasses()} id="printable-content">
         {/* Header with Logo and Business Details */}
-        <div className="flex justify-between items-start mb-12">
+        <div className="flex justify-between items-start mb-12 print:mb-6">
           <div className="flex flex-col items-start gap-4">
              {/* If user has a logo URL, display it. Otherwise show Initials fallback */}
              {profile.logoUrl ? (
                <img 
                 src={profile.logoUrl} 
                 alt="Company Logo" 
-                className="h-20 w-auto object-contain"
+                className="h-20 w-auto object-contain print:h-16"
                 onError={(e) => (e.currentTarget.style.display = 'none')}
                />
              ) : (
                <div 
-                  className="h-20 w-20 flex items-center justify-center rounded-lg shadow-sm text-3xl font-bold"
+                  className="h-20 w-20 flex items-center justify-center rounded-lg shadow-sm text-3xl font-bold print:h-14 print:w-14 print:text-xl"
                   style={{ 
                       backgroundColor: profile.logoBackgroundColor || '#2563eb', 
                       color: profile.logoTextColor || '#ffffff',
@@ -168,7 +180,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           </div>
           
           <div className={`text-right ${layout === 'modern' ? 'text-blue-600' : 'text-gray-500'}`}>
-            <p className="font-bold text-xl text-gray-900">{getDisplayName()}</p>
+            <p className="font-bold text-xl text-gray-900 print:text-lg">{getDisplayName()}</p>
             <p className="whitespace-pre-line text-sm mt-1">{profile.address}</p>
             <div className="mt-2 text-sm space-y-0.5">
               <p>{profile.email}</p>
@@ -189,7 +201,7 @@ const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
         </div>
 
         {/* Footer / Payment Info (Static based on profile) */}
-        <div className="mt-16 pt-8 border-t border-gray-200 text-sm text-gray-500 break-inside-avoid">
+        <div className="mt-16 pt-8 border-t border-gray-200 text-sm text-gray-500 break-inside-avoid print:mt-8 print:pt-4">
           <div className="grid grid-cols-2 gap-8">
               <div>
                   <h3 className="font-bold mb-2 text-gray-800">Payment Details</h3>
